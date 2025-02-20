@@ -1,7 +1,44 @@
 import tkinter as tk
+from tkinter import ttk
 import sqlite3
+import os
 
-# Conectar a la base de datos (o crearla si no existe)
+# Archivo donde se guarda la contraseña
+ARCHIVO_CONTRASEÑA = "contraseña.txt"
+
+# Verificar si el archivo de contraseña existe, si no, crear con la contraseña por defecto "1234"
+if not os.path.exists(ARCHIVO_CONTRASEÑA):
+    with open(ARCHIVO_CONTRASEÑA, "w") as f:
+        f.write("1234")
+
+# Función para obtener la contraseña almacenada
+def obtener_contraseña():
+    with open(ARCHIVO_CONTRASEÑA, "r") as f:
+        return f.read().strip()
+
+# Función para cambiar la contraseña
+def cambiar_contraseña():
+    def guardar_nueva_contraseña():
+        nueva = entrada_nueva.get()
+        if nueva:
+            with open(ARCHIVO_CONTRASEÑA, "w") as f:
+                f.write(nueva)
+            ventana_nueva_contraseña.destroy()
+    
+    ventana_nueva_contraseña = tk.Toplevel(ventana_historial)
+    ventana_nueva_contraseña.title("Cambiar Contraseña")
+    ventana_nueva_contraseña.geometry("300x150")
+    
+    etiqueta = tk.Label(ventana_nueva_contraseña, text="Nueva contraseña:")
+    etiqueta.pack(pady=10)
+    
+    entrada_nueva = tk.Entry(ventana_nueva_contraseña, show="*")
+    entrada_nueva.pack(pady=5)
+    
+    boton_guardar = tk.Button(ventana_nueva_contraseña, text="Guardar", command=guardar_nueva_contraseña)
+    boton_guardar.pack(pady=5)
+
+# Conectar a la base de datos
 conexion = sqlite3.connect("historial_calculadora.db")
 cursor = conexion.cursor()
 
@@ -15,56 +52,96 @@ CREATE TABLE IF NOT EXISTS historial (
 ''')
 conexion.commit()
 
-# Función para guardar una operación en el historial
+# Función para guardar en el historial
 def guardar_historial(operacion, resultado):
     cursor.execute("INSERT INTO historial (operacion, resultado) VALUES (?, ?)", (operacion, resultado))
     conexion.commit()
 
+# Función para eliminar el historial
+def borrar_historial():
+    cursor.execute("DELETE FROM historial")
+    conexion.commit()
+    tree.delete(*tree.get_children())
+
 # Función para mostrar el historial
 def mostrar_historial():
-    ventana_historial = tk.Toplevel(ventana)
-    ventana_historial.title("Historial")
-    ventana_historial.geometry("300x400")
+    global ventana_historial, tree
 
-    # Crear un widget Text para mostrar el historial
-    texto_historial = tk.Text(ventana_historial, font=("Arial", 12))
-    texto_historial.pack(expand=True, fill="both")
+    def verificar_contraseña():
+        if entrada_contraseña.get() == obtener_contraseña():
+            ventana_contraseña.destroy()
+            abrir_historial()
+        else:
+            etiqueta_error.config(text="Contraseña incorrecta")
 
-    # Obtener los datos del historial
-    cursor.execute("SELECT operacion, resultado FROM historial")
-    registros = cursor.fetchall()
+    def abrir_historial():
+        global ventana_historial
+        ventana_historial = tk.Toplevel(ventana)
+        ventana_historial.title("Historial")
+        ventana_historial.geometry("450x350")
 
-    # Mostrar los registros en el widget Text
-    for operacion, resultado in registros:
-        texto_historial.insert(tk.END, f"{operacion} = {resultado}\n")
+        tree = ttk.Treeview(ventana_historial, columns=("Operación", "Resultado"), show="headings")
+        tree.heading("Operación", text="Operación")
+        tree.heading("Resultado", text="Resultado")
+        tree.column("Operación", width=200)
+        tree.column("Resultado", width=150)
+        tree.pack(expand=True, fill="both")
 
-# Función para actualizar la expresión en la pantalla
+        cursor.execute("SELECT operacion, resultado FROM historial")
+        registros = cursor.fetchall()
+        
+        for operacion, resultado in registros:
+            tree.insert("", "end", values=(operacion, resultado))
+
+        # Botón para borrar historial
+        boton_borrar_historial = tk.Button(ventana_historial, text="Borrar Historial", bg="red", fg="white", command=borrar_historial)
+        boton_borrar_historial.pack(pady=5)
+
+        # Botón para cambiar contraseña
+        boton_cambiar_contraseña = tk.Button(ventana_historial, text="Cambiar Contraseña", bg="blue", fg="white", command=cambiar_contraseña)
+        boton_cambiar_contraseña.pack(pady=5)
+
+    ventana_contraseña = tk.Toplevel(ventana)
+    ventana_contraseña.title("Ingresar contraseña")
+    ventana_contraseña.geometry("300x150")
+    
+    etiqueta = tk.Label(ventana_contraseña, text="Ingrese la contraseña:")
+    etiqueta.pack(pady=10)
+    
+    entrada_contraseña = tk.Entry(ventana_contraseña, show="*")
+    entrada_contraseña.pack(pady=5)
+    
+    boton_verificar = tk.Button(ventana_contraseña, text="Aceptar", command=verificar_contraseña)
+    boton_verificar.pack(pady=5)
+    
+    etiqueta_error = tk.Label(ventana_contraseña, text="", fg="red")
+    etiqueta_error.pack()
+
+# Funciones de la calculadora
 def click_boton(valor):
-    current = pantalla.get()
-    pantalla.delete(0, tk.END)
-    pantalla.insert(0, current + valor)
+    pantalla.insert(tk.END, valor)
 
-# Función para evaluar la expresión
-def calcular():
+def calcular(*args):
     try:
         operacion = pantalla.get()
         resultado = eval(operacion)
         pantalla.delete(0, tk.END)
         pantalla.insert(0, str(resultado))
-        guardar_historial(operacion, str(resultado))  # Guardar en el historial
-    except Exception as e:
+        guardar_historial(operacion, str(resultado))
+    except Exception:
         pantalla.delete(0, tk.END)
         pantalla.insert(0, "Error")
 
-# Función para limpiar la pantalla
-def limpiar():
+def limpiar(*args):
     pantalla.delete(0, tk.END)
 
-# Crear la ventana principal
+# Crear ventana principal
 ventana = tk.Tk()
 ventana.title("Calculadora")
 ventana.geometry("300x400")
-ventana.resizable(0, 0)  # Evita que la ventana sea redimensionable
+ventana.resizable(0, 0)
+ventana.bind("<Return>", calcular)
+ventana.bind("<BackSpace>", lambda event: pantalla.delete(len(pantalla.get())-1, tk.END))
 
 # Pantalla de la calculadora
 pantalla = tk.Entry(ventana, font=("Arial", 20), justify="right", bd=10, relief=tk.RIDGE)
@@ -79,33 +156,24 @@ botones = [
     ('=', 5, 0), ('Historial', 5, 3)
 ]
 
-# Crear y colocar los botones en la ventana
 for (texto, fila, columna) in botones:
     if texto == '=':
-        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightblue", fg="black",
-                          command=calcular)
+        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightblue", fg="black", command=calcular)
         boton.grid(row=fila, column=columna, columnspan=2, sticky="nsew", padx=5, pady=5)
     elif texto == 'C':
-        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightcoral", fg="black",
-                          command=limpiar)
+        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightcoral", fg="black", command=limpiar)
         boton.grid(row=fila, column=columna, sticky="nsew", padx=5, pady=5)
     elif texto == 'Historial':
-        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightgreen", fg="black",
-                          command=mostrar_historial)
+        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightgreen", fg="black", command=mostrar_historial)
         boton.grid(row=fila, column=columna, sticky="nsew", padx=5, pady=5)
     else:
-        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightgray", fg="black",
-                          command=lambda valor=texto: click_boton(valor))
+        boton = tk.Button(ventana, text=texto, font=("Arial", 16), bg="lightgray", fg="black", command=lambda valor=texto: click_boton(valor))
         boton.grid(row=fila, column=columna, sticky="nsew", padx=5, pady=5)
 
-# Ajustar el tamaño de las filas y columnas
 for i in range(6):
     ventana.grid_rowconfigure(i, weight=1)
 for j in range(4):
     ventana.grid_columnconfigure(j, weight=1)
 
-# Iniciar la aplicación
 ventana.mainloop()
-
-# Cerrar la conexión a la base de datos al salir
 conexion.close()
